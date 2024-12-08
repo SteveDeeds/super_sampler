@@ -1,0 +1,8 @@
+
+/output
+/train
+*.wav
+desktop.ini
+*.pyc
+*.png
+*.keras
