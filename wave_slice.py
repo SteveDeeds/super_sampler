@@ -254,6 +254,7 @@ def process_slices(
         upper_velocity = min(127, velocity + 10)
         lower_velocity = max(0, velocity - 10)
         slice_filename = os.path.join(output_dir, samples_dir, f"slice_{note}_{upper_velocity}_{lower_velocity}.wav")
+        slice_data = slice_data / np.max(slice_data)
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
 
         # Generate and save the wavetable in the "wavetables" directory
