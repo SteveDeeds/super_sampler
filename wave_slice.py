@@ -42,6 +42,24 @@ def analyze_frequency(wave_data, sample_rate):
     idx = np.argmax(np.abs(yf))
     return xf[idx]
 
+# def analyze_frequency(signal, sample_rate):
+#     N = len(signal)
+#     spectrum = np.abs(np.fft.fft(signal, n=N))[:N // 2]
+
+#     # Downsample harmonics and ensure equal lengths
+#     harmonics = [spectrum[::i] for i in range(1, 10)]
+#     min_length = min(len(h) for h in harmonics)
+#     harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
+
+#     # Harmonic Product Spectrum calculation
+#     hps = np.sum(harmonics, axis=0)
+#     peak_index = np.argmax(hps)
+
+#     # Convert the peak index to frequency
+#     freq = sample_rate * peak_index / N
+#     return freq
+
+
 def calculate_velocity(peak_amplitude, max_amplitude):
     """
     Calculates velocity relative to the loudest slice, scaled to a max of 127.
@@ -207,42 +225,20 @@ def load_wav(file_path):
 
     return sample_rate, wave_data
 
-def split_wav(wave_data, sample_rate, num_slices, output_dir = "output", samples_dir="samples", wavetables_dir="wavetables"):
-    """
-    Splits a .wav file into slices and generates wavetables for each slice.
+def prepare_directories(output_dir, samples_dir, wavetables_dir):
+    os.makedirs(os.path.join(output_dir, samples_dir), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, wavetables_dir), exist_ok=True)
 
-    Parameters:
-    - wave_data: np.ndarray, the preprocessed wave data.
-    - sample_rate: int, the sample rate of the audio.
-    - num_slices: int, the number of slices to split the file into.
-    - samples_dir: str, directory to save the slices.
-    - wavetables_dir: str, directory to save the wavetables.
+def compute_peak_amplitudes(wave_data, slice_ranges):
+    return [np.max(np.abs(wave_data[start:end])) for start, end in slice_ranges]
 
-    Returns:
-    - List[SliceInfo]: A list of SliceInfo objects for each slice.
-    """
-    os.makedirs(os.path.join(output_dir,samples_dir), exist_ok=True)
-    os.makedirs(os.path.join(output_dir,wavetables_dir), exist_ok=True)
+def process_slices(
+    wave_data, sample_rate, slice_ranges, peak_amplitudes, output_dir, samples_dir, wavetables_dir
+):
     slices_info = []
-
-    num_frames = len(wave_data)
-    frames_per_slice = num_frames / num_slices
-    peak_amplitudes = []
-
-    # Step 1: Process all slices to collect peak amplitudes
-    for i in range(num_slices):
-        start = int(i * frames_per_slice)
-        end = int(min(start + frames_per_slice, num_frames))
-        slice_data = wave_data[start:end]
-        peak_amplitudes.append(np.max(np.abs(slice_data)))
-
-    # Step 2: Determine the maximum peak amplitude
     max_amplitude = max(peak_amplitudes)
 
-    # Step 3: Process slices with velocity calculations
-    for i in range(num_slices):
-        start = int(i * frames_per_slice)
-        end = int(min(start + frames_per_slice, num_frames))
+    for i, (start, end) in enumerate(slice_ranges):
         slice_data = wave_data[start:end]
 
         # Tune the note to the nearest pitch
@@ -261,100 +257,9 @@ def split_wav(wave_data, sample_rate, num_slices, output_dir = "output", samples
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
 
         # Generate and save the wavetable in the "wavetables" directory
-        slice_data = change_pitch(slice_data, sample_rate, (sample_rate/2048)*8)
-        wavetable = generate_wavetable(slice_data)
-        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{note}_{upper_velocity}_{lower_velocity}.wav")
-        write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
-
-        # Store slice information
-        slice_info = SliceInfo(
-            index=i + 1,
-            frequency_hz=dominant_freq,
-            musical_note=note,
-            peak_amplitude=peak_amplitude,
-            velocity=velocity,
-            slice_data=slice_data
-        )
-        slices_info.append(slice_info)
-        print(slice_info)
-
-    return slices_info
-
-def split_wav_by_trans(
-    wave_data,
-    sample_rate,
-    output_dir="output",
-    samples_dir="samples",
-    wavetables_dir="wavetables",
-    threshold=0.05,
-    frame_size_ms=10,
-    sample_length=2.0
-):
-    """
-    Splits a .wav file into slices based on transients and generates wavetables for each slice.
-
-    Parameters:
-    - wave_data: np.ndarray, the preprocessed wave data.
-    - sample_rate: int, the sample rate of the audio.
-    - output_dir: str, base output directory.
-    - samples_dir: str, subdirectory to save the slices.
-    - wavetables_dir: str, subdirectory to save the wavetables.
-    - threshold: float, amplitude change threshold for transient detection.
-    - frame_size_ms: int, frame size in milliseconds for envelope calculation.
-    - sample_length: float, minimum length of each slice in seconds.
-
-    Returns:
-    - List[SliceInfo]: A list of SliceInfo objects for each slice.
-    """
-    os.makedirs(os.path.join(output_dir, samples_dir), exist_ok=True)
-    os.makedirs(os.path.join(output_dir, wavetables_dir), exist_ok=True)
-    slices_info = []
-
-    # Find split locations
-    split_locations = find_split_locations(
-        wave_data, sample_rate, threshold=threshold, frame_size_ms=frame_size_ms, sample_length=sample_length
-    )
-    peak_amplitudes = []
-
-    # Step 1: Process all slices to collect peak amplitudes
-    for i in range(len(split_locations) - 1):
-        start = split_locations[i]
-        end = split_locations[i + 1]
-        slice_data = wave_data[start:end]
-        peak_amplitudes.append(np.max(np.abs(slice_data)))
-
-    # Step 2: Determine the maximum peak amplitude
-    max_amplitude = max(peak_amplitudes)
-
-    # Step 3: Process slices with velocity calculations
-    for i in range(len(split_locations) - 1):
-        start = split_locations[i]
-        end = split_locations[i + 1]
-        slice_data = wave_data[start:end]
-
-        # Tune the note to the nearest pitch
-        slice_data = tune_to_nearest_note(slice_data, sample_rate)
-
-        # Analyze frequency, determine musical note, and calculate velocity
-        dominant_freq = analyze_frequency(slice_data, sample_rate)
-        note = frequency_to_note(dominant_freq)
-        peak_amplitude = peak_amplitudes[i]
-        velocity = calculate_velocity(peak_amplitude, max_amplitude)
-
-        # Save the slice in the "samples" directory
-        upper_velocity = min(127, velocity + 10)
-        lower_velocity = max(0, velocity - 10)
-        slice_filename = os.path.join(
-            output_dir, samples_dir, f"slice_{note}_{upper_velocity}_{lower_velocity}.wav"
-        )
-        write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
-
-        # Generate and save the wavetable in the "wavetables" directory
         slice_data = change_pitch(slice_data, sample_rate, (sample_rate / 2048) * 8)
         wavetable = generate_wavetable(slice_data)
-        wavetable_filename = os.path.join(
-            output_dir, wavetables_dir, f"wavetable_{note}_{upper_velocity}_{lower_velocity}.wav"
-        )
+        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{note}_{upper_velocity}_{lower_velocity}.wav")
         write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
 
         # Store slice information
@@ -371,12 +276,35 @@ def split_wav_by_trans(
 
     return slices_info
 
+def split_wav(wave_data, sample_rate, num_slices, output_dir="output", samples_dir="samples", wavetables_dir="wavetables"):
+    prepare_directories(output_dir, samples_dir, wavetables_dir)
 
+    num_frames = len(wave_data)
+    frames_per_slice = num_frames // num_slices
+    slice_ranges = [
+        (int(i * frames_per_slice), int(min((i + 1) * frames_per_slice, num_frames)))
+        for i in range(num_slices)
+    ]
+
+    peak_amplitudes = compute_peak_amplitudes(wave_data, slice_ranges)
+    return process_slices(wave_data, sample_rate, slice_ranges, peak_amplitudes, output_dir, samples_dir, wavetables_dir)
+
+def split_wav_by_trans(
+    wave_data, sample_rate, output_dir="output", samples_dir="samples", wavetables_dir="wavetables",
+    threshold=0.05, frame_size_ms=10, sample_length=2.0
+):
+    prepare_directories(output_dir, samples_dir, wavetables_dir)
+
+    split_locations = find_split_locations(wave_data, sample_rate, threshold, frame_size_ms, sample_length)
+    slice_ranges = [(split_locations[i], split_locations[i + 1]) for i in range(len(split_locations) - 1)]
+
+    peak_amplitudes = compute_peak_amplitudes(wave_data, slice_ranges)
+    return process_slices(wave_data, sample_rate, slice_ranges, peak_amplitudes, output_dir, samples_dir, wavetables_dir)
 
 # Main Function
 def main():
-    file_path = "ukulele.wav"
-    num_slices = 40
+    file_path = "beep-boop.wav"
+    num_slices = 4
 
     # Load the .wav file
     sample_rate, wave_data = load_wav(file_path)
@@ -391,7 +319,7 @@ def main():
     wavetables_dir="wavetables",
     threshold=0.002,
     frame_size_ms=10,
-    sample_length=2.0
+    sample_length=1.5
 )
 
     return slices
