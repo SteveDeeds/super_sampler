@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from scipy.io.wavfile import read, write
-from scipy.fft import rfft, rfftfreq, fft, ifft
+from scipy.fft import fftfreq, fft, ifft
 from scipy.signal import resample
 from split_by_transient import find_split_locations
 
@@ -33,21 +33,22 @@ def frequency_to_note(freq):
     return f"{notes[note_index]}{octave}"
 
 # def analyze_frequency(wave_data, sample_rate):
-#     """
-#     Analyzes the dominant frequency in a wave slice using FFT.
-#     """
 #     N = len(wave_data)
-#     yf = rfft(wave_data)
-#     xf = rfftfreq(N, 1 / sample_rate)
+#     tone = wave_data[N//4:N//2]
+#     yf = np.abs(fft(tone))
+#     xf = fftfreq(len(tone), 1 / sample_rate)
 #     idx = np.argmax(np.abs(yf))
-#     return xf[idx]
+#     f = xf[idx]
+#     return f
 
 def analyze_frequency(signal, sample_rate):
     N = len(signal)
-    spectrum = np.abs(np.fft.fft(signal, n=N))[:N // 2]
+    tone = signal[N//8:N//2]
+    N = len(tone)
+    spectrum = np.abs(np.fft.fft(tone, n=N))[:N // 2]
 
     # Downsample harmonics and ensure equal lengths
-    harmonics = [spectrum[::i] for i in range(1, 10)]
+    harmonics = [spectrum[::i] for i in range(1, 4)]
     min_length = min(len(h) for h in harmonics)
     harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
 
@@ -144,15 +145,23 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
     # window = np.blackman(wavelet_length)
     window = np.ones(wavelet_length)
 
-    # phase = []
-    # for _ in range(wavelet_length):
-    #     angle = np.random.uniform(0, 2 * np.pi)  # Random angle between 0 and 2*pi radians
-    #     z = np.cos(angle) + 1j * np.sin(angle)  # Complex number representation
-    #     phase.append(z)        
+    phase = []
+    # Generate random phases for the first half
+    first_half = []
+    second_half_rev = []
+    for _ in range(wavelet_length // 2):
+        angle = np.random.uniform(0, 2 * np.pi)  # Random angle between 0 and 2*pi radians
+        z = np.cos(angle) + 1j * np.sin(angle)  # Complex number representation
+        first_half.append(z)
+        z = np.cos(angle+np.pi) + 1j * np.sin(angle+np.pi)  # Complex number representation
+        second_half_rev.append(z)
 
-    # zero phase
-    phase = np.ones(wavelet_length)* 1j
-    phase[len(phase)//2:] = -1j
+    second_half = second_half_rev[::-1]
+    phase = first_half + second_half
+
+    # # zero phase
+    # phase = np.ones(wavelet_length)* -1j
+    # phase[len(phase)//2:] = 1j
 
     # Initialize the wavetable and RMS values list
     wavetable = []
@@ -194,6 +203,9 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 
     # Concatenate all the wavelets into a single 1D array
     full_wavetable = np.concatenate(wavetable)
+
+    #normalize wavetable
+    full_wavetable = full_wavetable/np.max(np.abs(full_wavetable))
 
     return full_wavetable
 
@@ -349,23 +361,23 @@ def split_wav_by_trans(
 # Main Function
 def main():
     file_path = "CP33-EPiano1.wav"
-    num_slices = 4
+    num_slices = 30
 
     # Load the .wav file
     sample_rate, wave_data = load_wav(file_path)
 
     # Split the wave data into slices
-    # slices = split_wav(wave_data, sample_rate, num_slices)
-    slices = split_wav_by_trans(
-    wave_data,
-    sample_rate,
-    output_dir="output",
-    samples_dir="samples",
-    wavetables_dir="wavetables",
-    threshold=0.002,
-    frame_size_ms=10,
-    sample_length=1.5
-)
+    slices = split_wav(wave_data, sample_rate, num_slices)
+    # slices = split_wav_by_trans(
+    # wave_data,
+    # sample_rate,
+    # output_dir="output",
+    # samples_dir="samples",
+    # wavetables_dir="wavetables",
+    # threshold=0.002,
+    # frame_size_ms=10,
+    # sample_length=1.5
+    #)
 
     return slices
 
