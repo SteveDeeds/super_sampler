@@ -32,32 +32,32 @@ def frequency_to_note(freq):
     octave = (int(round(note_number)) // 12) - 1
     return f"{notes[note_index]}{octave}"
 
-def analyze_frequency(wave_data, sample_rate):
-    """
-    Analyzes the dominant frequency in a wave slice using FFT.
-    """
-    N = len(wave_data)
-    yf = rfft(wave_data)
-    xf = rfftfreq(N, 1 / sample_rate)
-    idx = np.argmax(np.abs(yf))
-    return xf[idx]
+# def analyze_frequency(wave_data, sample_rate):
+#     """
+#     Analyzes the dominant frequency in a wave slice using FFT.
+#     """
+#     N = len(wave_data)
+#     yf = rfft(wave_data)
+#     xf = rfftfreq(N, 1 / sample_rate)
+#     idx = np.argmax(np.abs(yf))
+#     return xf[idx]
 
-# def analyze_frequency(signal, sample_rate):
-#     N = len(signal)
-#     spectrum = np.abs(np.fft.fft(signal, n=N))[:N // 2]
+def analyze_frequency(signal, sample_rate):
+    N = len(signal)
+    spectrum = np.abs(np.fft.fft(signal, n=N))[:N // 2]
 
-#     # Downsample harmonics and ensure equal lengths
-#     harmonics = [spectrum[::i] for i in range(1, 10)]
-#     min_length = min(len(h) for h in harmonics)
-#     harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
+    # Downsample harmonics and ensure equal lengths
+    harmonics = [spectrum[::i] for i in range(1, 10)]
+    min_length = min(len(h) for h in harmonics)
+    harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
 
-#     # Harmonic Product Spectrum calculation
-#     hps = np.sum(harmonics, axis=0)
-#     peak_index = np.argmax(hps)
+    # Harmonic Product Spectrum calculation
+    hps = np.sum(harmonics, axis=0)
+    peak_index = np.argmax(hps)
 
-#     # Convert the peak index to frequency
-#     freq = sample_rate * peak_index / N
-#     return freq
+    # Convert the peak index to frequency
+    freq = sample_rate * peak_index / N
+    return freq
 
 
 def calculate_velocity(peak_amplitude, max_amplitude):
@@ -197,6 +197,50 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 
     return full_wavetable
 
+# def generate_wavetable(audio_data, sample_rate, wavelet_length=2048, number_of_waves=256):
+#     """
+#     Generate a wavetable from the input audio data.
+    
+#     Parameters:
+#         audio_data (numpy array): The input audio signal.
+#         sample_rate (int): The sample rate of the audio signal.
+#         wavelet_length (int): The length of each wavelet in the wavetable.
+#         number_of_waves (int): The number of waveforms in the wavetable.
+    
+#     Returns:
+#         numpy array: The generated wavetable of shape (number_of_waves, wavelet_length).
+#     """
+#     # Step 1: Determine the pitch using the analyze_frequency function
+#     fundamental_freq = analyze_frequency(audio_data, sample_rate)
+#     if fundamental_freq <= 0:
+#         raise ValueError("Could not determine a valid fundamental frequency.")
+    
+#     # Step 2: Calculate the period of the fundamental frequency
+#     period_samples = int(sample_rate / fundamental_freq)
+    
+#     # Step 3: Identify zero crossings (rising)
+#     zero_crossings = np.where(np.diff(np.sign(audio_data)) > 0)[0]
+    
+#     # Step 4: Extract 4 cycles of the waveform
+#     for i in range(len(zero_crossings) - 4):
+#         candidate_start = zero_crossings[i]
+#         candidate_end = zero_crossings[i + 4]
+#         if candidate_end - candidate_start >= 4 * period_samples:
+#             grain = audio_data[candidate_start:candidate_end]
+#             break
+#     else:
+#         raise ValueError("Could not find 4 complete cycles in the audio data.")
+    
+#     # Step 5: Resample the extracted grain to the desired wavelet length
+#     resampled_grain = resample(grain, wavelet_length)
+    
+#     # Step 6: Generate the wavetable by scaling the amplitude of the resampled wavelet
+#     wavetable = np.zeros((number_of_waves, wavelet_length))
+#     for i in range(number_of_waves):
+#         wavetable[i] = resampled_grain * (i / (number_of_waves - 1))
+    
+#     return wavetable
+
 
 def load_wav(file_path):
     """
@@ -253,14 +297,14 @@ def process_slices(
         # Save the slice in the "samples" directory
         upper_velocity = min(127, velocity + 10)
         lower_velocity = max(0, velocity - 10)
-        slice_filename = os.path.join(output_dir, samples_dir, f"slice_{note}_{upper_velocity}_{lower_velocity}.wav")
+        slice_filename = os.path.join(output_dir, samples_dir, f"slice_{i}_{note}_{upper_velocity}_{lower_velocity}.wav")
         slice_data = slice_data / np.max(slice_data)
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
 
         # Generate and save the wavetable in the "wavetables" directory
         slice_data = change_pitch(slice_data, sample_rate, (sample_rate / 2048) * 8)
         wavetable = generate_wavetable(slice_data)
-        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{note}_{upper_velocity}_{lower_velocity}.wav")
+        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{i}_{note}_{upper_velocity}_{lower_velocity}.wav")
         write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
 
         # Store slice information
@@ -304,7 +348,7 @@ def split_wav_by_trans(
 
 # Main Function
 def main():
-    file_path = "beep-boop.wav"
+    file_path = "CP33-EPiano1.wav"
     num_slices = 4
 
     # Load the .wav file
