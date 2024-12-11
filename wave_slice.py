@@ -4,6 +4,7 @@ from scipy.io.wavfile import read, write
 from scipy.fft import fftfreq, fft, ifft
 from scipy.signal import resample
 from split_by_transient import find_split_locations
+import matplotlib.pyplot as plt
 
 class SliceInfo:
     """
@@ -32,33 +33,62 @@ def frequency_to_note(freq):
     octave = (int(round(note_number)) // 12) - 1
     return f"{notes[note_index]}{octave}"
 
-# def analyze_frequency(wave_data, sample_rate):
-#     N = len(wave_data)
-#     tone = wave_data[N//4:N//2]
-#     yf = np.abs(fft(tone))
-#     xf = fftfreq(len(tone), 1 / sample_rate)
-#     idx = np.argmax(np.abs(yf))
-#     f = xf[idx]
-#     return f
+def analyze_frequency(wave_data, sample_rate):
+    N = len(wave_data)
+    tone = wave_data[N//4:N//2]
+    yf = np.abs(fft(tone))
+    xf = fftfreq(len(tone), 1 / sample_rate)
+    idx = np.argmax(np.abs(yf))
+    # check if it's the 2nd harmonic that we are seeing as the strongest.
+    if yf[idx//2] > yf[idx]/10:
+        f = xf[idx//2]
+    else:
+        f = xf[idx]
+    return f
 
-def analyze_frequency(signal, sample_rate):
-    N = len(signal)
-    tone = signal[N//8:N//2]
-    N = len(tone)
-    spectrum = np.abs(np.fft.fft(tone, n=N))[:N // 2]
+# def analyze_frequency(signal, sample_rate):
+#     N = len(signal)
+#     tone = signal[N//8:N//2]
+#     N = len(tone)
+#     spectrum = np.abs(np.fft.fft(tone, n=N))[:N // 2]
+#     freqs = np.fft.fftfreq(n=N, d=1.0/sample_rate)[:N // 2]
 
-    # Downsample harmonics and ensure equal lengths
-    harmonics = [spectrum[::i] for i in range(1, 4)]
-    min_length = min(len(h) for h in harmonics)
-    harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
+#     # # weight the lower frequencies as more likely
+#     # scale = 1.0/(np.arange(len(spectrum)) + 1.0)
+#     # spectrum = spectrum * scale
 
-    # Harmonic Product Spectrum calculation
-    hps = np.sum(harmonics, axis=0)
-    peak_index = np.argmax(hps)
+#     # # Find the frequencies of the top 5 peaks
+#     # frequencies = np.fft.fftfreq(N, 1 / sample_rate)[:N // 2]
+#     # top_indices = np.argsort(spectrum)[-20:][::-1]  # Indices of the largest peaks
+#     # top_frequencies = frequencies[top_indices]
+#     # print(F"median={np.median(top_frequencies)} min={np.min(top_frequencies)} ")
 
-    # Convert the peak index to frequency
-    freq = sample_rate * peak_index / N
-    return freq
+#     # Downsample harmonics and ensure equal lengths
+#     harmonics = [spectrum[::i] for i in range(1, 3)]
+#     min_length = min(len(h) for h in harmonics)
+#     harmonics = [h[:min_length] for h in harmonics]  # Trim all harmonics to the shortest length
+
+#     # Harmonic Product Spectrum calculation
+#     hps = np.sum(harmonics, axis=0)
+#     freqs = freqs[:len(hps)]
+#     spectrum = spectrum[:len(hps)]
+#     peak_index = np.argmax(hps)
+
+#     # plot
+#     # Plotting
+#     plt.figure(figsize=(10, 6))
+#     plt.semilogx(freqs, hps, label='Harmonic Product Spectrum', color='blue', linewidth=2)
+#     plt.semilogx(freqs, spectrum, label='Spectrum', color='orange', linestyle='--', linewidth=1.5)
+#     plt.title('Harmonic Product Spectrum')
+#     plt.xlabel('Frequency Index')
+#     plt.ylabel('Amplitude')
+#     plt.legend()
+#     plt.grid(True)
+#     plt.waitforbuttonpress()
+
+#     # Convert the peak index to frequency
+#     freq = sample_rate * peak_index / N
+#     return freq
 
 
 def calculate_velocity(peak_amplitude, max_amplitude):
@@ -309,14 +339,14 @@ def process_slices(
         # Save the slice in the "samples" directory
         upper_velocity = min(127, velocity + 10)
         lower_velocity = max(0, velocity - 10)
-        slice_filename = os.path.join(output_dir, samples_dir, f"slice_{i}_{note}_{upper_velocity}_{lower_velocity}.wav")
-        slice_data = slice_data / np.max(slice_data)
+        slice_filename = os.path.join(output_dir, samples_dir, f"slice_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
+        slice_data = slice_data / np.max(np.abs(slice_data))
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
 
         # Generate and save the wavetable in the "wavetables" directory
         slice_data = change_pitch(slice_data, sample_rate, (sample_rate / 2048) * 8)
         wavetable = generate_wavetable(slice_data)
-        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{i}_{note}_{upper_velocity}_{lower_velocity}.wav")
+        wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
         write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
 
         # Store slice information
