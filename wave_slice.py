@@ -25,7 +25,7 @@ class SliceInfo:
 def frequency_to_note(freq):
     if freq <= 0:
         return "Unknown"
-    
+
     A4 = 440.0
     notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     note_number = 12 * np.log2(freq / A4) + 69
@@ -102,12 +102,12 @@ def calculate_velocity(peak_amplitude, max_amplitude):
 def change_pitch(audio_data, sample_rate, target_frequency):
     """
     Changes the pitch of the audio data by adjusting the sample rate.
-    
+
     Parameters:
     - audio_data: np.ndarray, the waveform data as a numpy array.
     - sample_rate: int, the sample rate of the audio.
     - target_frequency: float, the desired frequency in Hz.
-    
+
     Returns:
     - np.ndarray: The pitch-adjusted audio data.
     """
@@ -116,13 +116,13 @@ def change_pitch(audio_data, sample_rate, target_frequency):
 
     if current_frequency <= 0:
         raise ValueError("The audio signal contains no detectable frequency.")
-    
+
     # Calculate the pitch adjustment factor
     pitch_factor = current_frequency / target_frequency
-    
+
     # Change the pitch by adjusting the sample rate
     resampled_audio = resample(audio_data, int(len(audio_data) * pitch_factor))
-    
+
     # Return the pitch-adjusted audio
     return resampled_audio.astype(np.float32)
 
@@ -141,18 +141,18 @@ def tune_to_nearest_note(audio_data, sample_rate):
 
     # Step 1: Analyze the dominant frequency in the audio
     dominant_freq = analyze_frequency(audio_data, sample_rate)
-    
+
     if dominant_freq <= 0:
         return audio_data, "Unknown"
-    
+
     # Step 2: Find the nearest musical note and its frequency
     A4 = 440.0  # Reference frequency for A4
     note_number = 12 * np.log2(dominant_freq / A4) + 49
     target_freq = A4 * 2 ** ((round(note_number) - 49) / 12)
-    
+
     # Step 3: Adjust pitch to match the nearest note
     tuned_audio_data = change_pitch(audio_data, sample_rate, target_freq)
-    
+
     return tuned_audio_data
 
 import numpy as np
@@ -242,13 +242,13 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 # def generate_wavetable(audio_data, sample_rate, wavelet_length=2048, number_of_waves=256):
 #     """
 #     Generate a wavetable from the input audio data.
-    
+
 #     Parameters:
 #         audio_data (numpy array): The input audio signal.
 #         sample_rate (int): The sample rate of the audio signal.
 #         wavelet_length (int): The length of each wavelet in the wavetable.
 #         number_of_waves (int): The number of waveforms in the wavetable.
-    
+
 #     Returns:
 #         numpy array: The generated wavetable of shape (number_of_waves, wavelet_length).
 #     """
@@ -256,13 +256,13 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 #     fundamental_freq = analyze_frequency(audio_data, sample_rate)
 #     if fundamental_freq <= 0:
 #         raise ValueError("Could not determine a valid fundamental frequency.")
-    
+
 #     # Step 2: Calculate the period of the fundamental frequency
 #     period_samples = int(sample_rate / fundamental_freq)
-    
+
 #     # Step 3: Identify zero crossings (rising)
 #     zero_crossings = np.where(np.diff(np.sign(audio_data)) > 0)[0]
-    
+
 #     # Step 4: Extract 4 cycles of the waveform
 #     for i in range(len(zero_crossings) - 4):
 #         candidate_start = zero_crossings[i]
@@ -272,15 +272,15 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 #             break
 #     else:
 #         raise ValueError("Could not find 4 complete cycles in the audio data.")
-    
+
 #     # Step 5: Resample the extracted grain to the desired wavelet length
 #     resampled_grain = resample(grain, wavelet_length)
-    
+
 #     # Step 6: Generate the wavetable by scaling the amplitude of the resampled wavelet
 #     wavetable = np.zeros((number_of_waves, wavelet_length))
 #     for i in range(number_of_waves):
 #         wavetable[i] = resampled_grain * (i / (number_of_waves - 1))
-    
+
 #     return wavetable
 
 
@@ -397,17 +397,17 @@ def main():
     sample_rate, wave_data = load_wav(file_path)
 
     # Split the wave data into slices
-    slices = split_wav(wave_data, sample_rate, num_slices)
-    # slices = split_wav_by_trans(
-    # wave_data,
-    # sample_rate,
-    # output_dir="output",
-    # samples_dir="samples",
-    # wavetables_dir="wavetables",
-    # threshold=0.002,
-    # frame_size_ms=10,
-    # sample_length=1.5
-    #)
+    # slices = split_wav(wave_data, sample_rate, num_slices)
+    slices = split_wav_by_trans(
+    wave_data,
+    sample_rate,
+    output_dir="output",
+    samples_dir="samples",
+    wavetables_dir="wavetables",
+    threshold=0.002,
+    frame_size_ms=10,
+    sample_length=1.5
+    )
 
     return slices
 
