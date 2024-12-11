@@ -19,7 +19,7 @@ def load_wave(input_file):
     audio = audio / np.max(np.abs(audio))  # Normalize audio
     return sr, audio
 
-def find_split_locations(audio, sr, threshold=0.003, frame_size_ms=10, sample_length=2.0, plot=False):
+def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_length=2.0, plot=False):
     """
     Finds split locations based on transient detection, rejecting short chunks, and optionally plots the wave data, splits, and peak envelope.
     
@@ -48,7 +48,7 @@ def find_split_locations(audio, sr, threshold=0.003, frame_size_ms=10, sample_le
     # Detect transient points
     transients = []
     for i in range(frame_size_ms*sr//1000, len(envelope)):
-        if envelope[i] >= 2 * envelope[i - frame_size_ms*sr//1000]:
+        if envelope[i] >= envelope[i - frame_size_ms*sr//1000] / sensitivity:
             transients.append(i)
 
     transients = np.array(transients)
