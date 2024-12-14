@@ -157,7 +157,7 @@ def tune_to_nearest_note(audio_data, sample_rate):
 
 import numpy as np
 
-def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
+def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256, sample_rate=44100, threshold =0):
     """
     Generates a wavetable from audio data with a uniform random phase applied to all wavelets.
 
@@ -213,6 +213,11 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
         # Apply the phase and convert back to time domain
         wave_fft = fft(wave_windowed)
         mag_fft = np.abs(wave_fft)
+
+        # Set values below threshold_level to zero
+        threshold_level = np.max(mag_fft)*threshold
+        mag_fft[mag_fft < threshold_level] = 0
+
         wave_fft_phased = mag_fft * phase
         ifft_wave = ifft(wave_fft_phased)
         wave_with_phase = np.real(ifft_wave)
@@ -259,29 +264,39 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256):
 
 #     # Step 2: Calculate the period of the fundamental frequency
 #     period_samples = int(sample_rate / fundamental_freq)
+#     slice_spacing =  int((len(audio_data)-wavelet_length)/number_of_waves)
 
-#     # Step 3: Identify zero crossings (rising)
-#     zero_crossings = np.where(np.diff(np.sign(audio_data)) > 0)[0]
+#     wavetable = []
 
-#     # Step 4: Extract 4 cycles of the waveform
-#     for i in range(len(zero_crossings) - 4):
-#         candidate_start = zero_crossings[i]
-#         candidate_end = zero_crossings[i + 4]
-#         if candidate_end - candidate_start >= 4 * period_samples:
-#             grain = audio_data[candidate_start:candidate_end]
-#             break
-#     else:
-#         raise ValueError("Could not find 4 complete cycles in the audio data.")
-
-#     # Step 5: Resample the extracted grain to the desired wavelet length
-#     resampled_grain = resample(grain, wavelet_length)
-
-#     # Step 6: Generate the wavetable by scaling the amplitude of the resampled wavelet
-#     wavetable = np.zeros((number_of_waves, wavelet_length))
 #     for i in range(number_of_waves):
-#         wavetable[i] = resampled_grain * (i / (number_of_waves - 1))
+#         start = i*slice_spacing
+#         # find the closest positive zero crossing
+#         while (not audio_data[start]>0 and audio_data[start-1]<0):
+#             if audio_data[start] > 0:
+#                 start = start -1
+#             else:
+#                 start = start +1
+#             if start == 0:
+#                 break
+#         end = start + 1 * period_samples
+#         # find the closest positive zero crossing
+#         while (not audio_data[end]>0 and audio_data[end-1]<0):
+#             if audio_data[end] > 0:
+#                 end = end -1
+#             else:
+#                 end = end +1
+#             if end == 0:
+#                 break        
+#         # print(F"start={start}, end={end}")
 
-#     return wavetable
+#         # Step 5: Resample the extracted grain to the desired wavelet length
+#         resampled_grain = resample(audio_data[start:end], wavelet_length)
+
+#         wavetable.append(resampled_grain)
+#     # Concatenate all the wavelets into a single 1D array
+#     full_wavetable = np.concatenate(wavetable)        
+
+#     return full_wavetable
 
 
 def load_wav(file_path):
@@ -345,7 +360,7 @@ def process_slices(
 
         # Generate and save the wavetable in the "wavetables" directory
         slice_data = change_pitch(slice_data, sample_rate, (sample_rate / 2048) * 8)
-        wavetable = generate_wavetable(slice_data)
+        wavetable = generate_wavetable(slice_data, sample_rate=sample_rate)
         wavetable_filename = os.path.join(output_dir, wavetables_dir, f"wavetable_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
         write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
 
@@ -397,17 +412,17 @@ def main():
     sample_rate, wave_data = load_wav(file_path)
 
     # Split the wave data into slices
-    # slices = split_wav(wave_data, sample_rate, num_slices)
-    slices = split_wav_by_trans(
-    wave_data,
-    sample_rate,
-    output_dir="output",
-    samples_dir="samples",
-    wavetables_dir="wavetables",
-    threshold=0.002,
-    frame_size_ms=10,
-    sample_length=1.5
-    )
+    slices = split_wav(wave_data, sample_rate, num_slices)
+    # slices = split_wav_by_trans(
+    # wave_data,
+    # sample_rate,
+    # output_dir="output",
+    # samples_dir="samples",
+    # wavetables_dir="wavetables",
+    # sensitivity=0.5,
+    # frame_size_ms=10,
+    # sample_length=1.5
+    # )
 
     return slices
 
