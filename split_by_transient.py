@@ -2,22 +2,8 @@ import numpy as np
 from scipy.io import wavfile
 import os
 import matplotlib.pyplot as plt
-
-def load_wave(input_file):
-    """
-    Loads a WAV file.
-    
-    Args:
-        input_file (str): Path to the input WAV file.
-        
-    Returns:
-        tuple: Sample rate (int) and audio data (numpy array).
-    """
-    sr, audio = wavfile.read(input_file)
-    if len(audio.shape) > 1:  # Convert to mono if stereo
-        audio = audio.mean(axis=1)
-    audio = audio / np.max(np.abs(audio))  # Normalize audio
-    return sr, audio
+from wave_slice import process_slices
+from SliceInfo import SliceInfo, frequency_to_note, analyze_frequency, calculate_velocity, change_pitch, tune_to_nearest_note, load_wav, prepare_directories
 
 def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_length=2.0, plot=False):
     """
@@ -47,8 +33,9 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
 
     # Detect transient points
     transients = []
+    max_envelope = np.max(envelope)
     for i in range(frame_size_ms*sr//1000, len(envelope)):
-        if envelope[i] >= envelope[i - frame_size_ms*sr//1000] / sensitivity:
+        if (envelope[i] >= envelope[i - frame_size_ms*sr//1000] / sensitivity) and (envelope[i]>max_envelope*0.005):
             transients.append(i)
 
     transients = np.array(transients)
@@ -87,32 +74,34 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
         plt.grid()
         plt.show()
 
-    return valid_splits
+        slice_ranges = [(valid_splits[i], valid_splits[i + 1]) for i in range(len(valid_splits) - 1)]
 
-def split_and_save_audio(audio, sr, split_locations, output_folder):
-    """
-    Splits audio based on provided split locations and saves the chunks.
+    return slice_ranges
 
-    Args:
-        audio (numpy array): Normalized audio data.
-        sr (int): Sample rate of the audio.
-        split_locations (list): List of split points in samples, including start and end points.
-        output_folder (str): Directory to save the output samples.
-    """
-    os.makedirs(output_folder, exist_ok=True)
+# def split_and_save_audio(audio, sr, split_locations, output_folder):
+#     """
+#     Splits audio based on provided split locations and saves the chunks.
 
-    for i in range(len(split_locations) - 1):
-        start_sample = split_locations[i]
-        end_sample = split_locations[i + 1]
+#     Args:
+#         audio (numpy array): Normalized audio data.
+#         sr (int): Sample rate of the audio.
+#         split_locations (list): List of split points in samples, including start and end points.
+#         output_folder (str): Directory to save the output samples.
+#     """
+#     os.makedirs(output_folder, exist_ok=True)
 
-        # Extract the audio chunk
-        chunk = audio[start_sample:end_sample]
+#     for i in range(len(split_locations) - 1):
+#         start_sample = split_locations[i]
+#         end_sample = split_locations[i + 1]
 
-        # Save the chunk as a separate WAV file
-        output_file = os.path.join(output_folder, f"sample_{i+1}.wav")
-        wavfile.write(output_file, sr, (chunk * 32767).astype(np.int16))
+#         # Extract the audio chunk
+#         chunk = audio[start_sample:end_sample]
 
-    print(f"Audio split into samples and saved in {output_folder}")
+#         # Save the chunk as a separate WAV file
+#         output_file = os.path.join(output_folder, f"sample_{i+1}.wav")
+#         wavfile.write(output_file, sr, (chunk * 32767).astype(np.int16))
+
+#     print(f"Audio split into samples and saved in {output_folder}")
 
 # Example usage
 if __name__ == "__main__":
@@ -120,10 +109,10 @@ if __name__ == "__main__":
     output_dir = "output_samples"  # Directory to save the samples
 
     # Load the WAV file
-    sample_rate, audio_data = load_wave(input_wav)
+    sample_rate, audio_data = load_wav(input_wav)
 
     # Find split locations with a minimum sample length of 2 seconds
     split_points = find_split_locations(audio_data, sample_rate, sample_length=2.0, plot=True, frame_size_ms=80)
 
     # Split and save audio chunks
-    split_and_save_audio(audio_data, sample_rate, split_points, output_dir)
+    process_slices(wave_data=audio_data, sample_rate=sample_rate, slice_ranges=split_points, output_dir=output_dir)

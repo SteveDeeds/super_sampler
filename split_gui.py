@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
-from split_by_transient import load_wave, find_split_locations, split_and_save_audio
+from split_by_transient import load_wav, find_split_locations
+from wave_slice import process_slices
 
 class AudioSplitterApp:
     def __init__(self, root):
@@ -88,7 +89,7 @@ class AudioSplitterApp:
             return
 
         # Load the WAV file
-        self.sample_rate, self.audio_data = load_wave(self.file_path)
+        self.sample_rate, self.audio_data = load_wav(self.file_path)
 
         # Find split locations
         self.split_points = find_split_locations(self.audio_data, self.sample_rate,
@@ -114,7 +115,7 @@ class AudioSplitterApp:
             return
 
         # Split and save audio chunks
-        split_and_save_audio(self.audio_data, self.sample_rate, self.split_points, output_folder)
+        process_slices(wave_data=self.audio_data, sample_rate=self.sample_rate, slice_ranges=self.split_points, output_dir=output_folder)
         messagebox.showinfo("Success", f"Audio has been split and saved in {output_folder}")
 
 if __name__ == "__main__":
