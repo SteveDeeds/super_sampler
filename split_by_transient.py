@@ -1,9 +1,8 @@
 import numpy as np
-from scipy.io import wavfile
-import os
 import matplotlib.pyplot as plt
 from wave_slice import process_slices
-from SliceInfo import SliceInfo, frequency_to_note, analyze_frequency, calculate_velocity, change_pitch, tune_to_nearest_note, load_wav, prepare_directories
+from scipy.ndimage import maximum_filter1d
+from SliceInfo import load_wav
 
 def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_length=2.0, plot=False):
     """
@@ -25,17 +24,16 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
 
     padded_audio = np.pad(audio, (frame_size, 0), mode='constant', constant_values=0)
 
-    # Calculate peak envelope (maximum value in each sliding window with step size 1)
-    envelope = np.array([ 
-        np.max(np.abs(padded_audio[i:i+frame_size]))  # Use the maximum absolute value in the window
-        for i in range(0, len(audio) - frame_size + 1)  # Sliding window with step size of 1
-    ])
+    # Calculate the peak envelope using a 1D maximum filter
+    envelope = maximum_filter1d(np.abs(padded_audio), size=frame_size, mode='constant')
+
+    envelope = envelope[frame_size//2:-frame_size//2]
 
     # Detect transient points
     transients = []
     max_envelope = np.max(envelope)
-    for i in range(frame_size_ms*sr//1000, len(envelope)):
-        if (envelope[i] >= envelope[i - frame_size_ms*sr//1000] / sensitivity) and (envelope[i]>max_envelope*0.005):
+    for i in range(frame_size, len(envelope)):
+        if (envelope[i] >= envelope[i - frame_size] / sensitivity) and (envelope[i]>max_envelope*0.005):
             transients.append(i)
 
     transients = np.array(transients)
@@ -73,6 +71,7 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
         plt.legend()
         plt.grid()
         plt.show()
+        plt.waitforbuttonpress()
 
         slice_ranges = [(valid_splits[i], valid_splits[i + 1]) for i in range(len(valid_splits) - 1)]
 
