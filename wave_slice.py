@@ -168,7 +168,7 @@ def process_slices(
         upper_velocity = min(127, velocity + 10)
         lower_velocity = max(0, velocity - 10)
         slice_filename = os.path.join(output_dir, "samples", f"slice_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
-        slice_data = slice_data / np.max(np.abs(slice_data))
+        # slice_data = slice_data / np.max(np.abs(slice_data))
         prepare_directories(output_dir=output_dir)
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
 

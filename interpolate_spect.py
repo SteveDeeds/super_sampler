@@ -4,13 +4,13 @@ from tensorflow.keras import layers, Model
 from tensorflow.keras.callbacks import ModelCheckpoint
 import os
 from scipy.io.wavfile import write, read as wavread
-from scipy.signal import spectrogram
+from scipy.signal import spectrogram, istft
 import matplotlib.pyplot as plt
 from wave_slice import analyze_frequency, change_pitch  # Import your function
 
 
 
-def load_wav_files(directory, target_length=None, target_time_bins=100, target_freq_bins=513):
+def load_wav_files(directory, target_length_s=1.0):
     """
     Load .wav files from a directory and process them into spectrograms, 
     zero-padded to a fixed size and length of the longest file.
@@ -26,7 +26,6 @@ def load_wav_files(directory, target_length=None, target_time_bins=100, target_f
     peak_values = []
     waveforms = []
     sample_rate = None
-    max_length = 0
 
     # First pass: Find the maximum length of the waveform
     for filename in os.listdir(directory):
@@ -38,34 +37,29 @@ def load_wav_files(directory, target_length=None, target_time_bins=100, target_f
             if waveform.ndim > 1:
                 waveform = waveform.mean(axis=1)
 
-            # Track the longest waveform length
-            max_length = max(max_length, len(waveform))
-
             waveforms.append((filepath, waveform))
+
+    normallized_pitch = (sample_rate/2048.0)*8
 
     # Second pass: Process each file with zero-padding to match the maximum length
     for filepath, waveform in waveforms:
+
+        # store the actual frequency
+        frequencies.append(analyze_frequency(waveform, sample_rate))
+        # convert to a common frequency for analysis
+        waveform = change_pitch(waveform, sample_rate, normallized_pitch)
+
         # Zero-pad the waveform if it is shorter than max_length
-        if len(waveform) < max_length:
-            waveform = np.pad(waveform, (0, max_length - len(waveform)), mode='constant')
+        if len(waveform) < target_length_s * sample_rate:
+            waveform = np.pad(waveform, (0, int(target_length_s * sample_rate - len(waveform))), mode='constant')
+        else:
+            waveform = waveform[:int(target_length_s * sample_rate)]
 
         # Compute the spectrogram
-        f, t, Sxx = spectrogram(waveform, fs=sample_rate, nperseg=1024, noverlap=512)
-
-        # Pad or truncate the spectrogram to match target_freq_bins and target_time_bins
-        if Sxx.shape[0] > target_freq_bins:
-            Sxx = Sxx[:target_freq_bins, :]  # Truncate frequency bins
-        else:
-            Sxx = np.pad(Sxx, ((0, target_freq_bins - Sxx.shape[0]), (0, 0)), mode='constant')  # Pad frequency bins
-
-        if Sxx.shape[1] > target_time_bins:
-            Sxx = Sxx[:, :target_time_bins]  # Truncate time bins
-        else:
-            Sxx = np.pad(Sxx, ((0, 0), (0, target_time_bins - Sxx.shape[1])), mode='constant')  # Pad time bins
+        f, t, Sxx = spectrogram(waveform, fs=sample_rate, nperseg=2048, noverlap=1792)
 
         # Store spectrogram and associated frequencies/times
         spectrograms.append(Sxx)
-        frequencies.append(analyze_frequency(waveform, sample_rate))
         peak_values.append(np.max(waveform))
 
     # Convert to numpy arrays
@@ -97,7 +91,19 @@ def create_model(spectrogram_shape, learning_rate=0.2, d1=128):
     model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
     return model
 
-def save_as_wav(output_path, spectrogram, sample_rate):
+def clean_spectrogram(spectrogram, p=10):
+    # Calculate the 10th percentile of the spectrogram
+    percentile = np.percentile(spectrogram, p)
+    
+    # Subtract the percentile from the spectrogram
+    spectrogram_processed = spectrogram - percentile
+    
+    # Set all negative values to zero
+    spectrogram_processed[spectrogram_processed < 0] = 0
+    
+    return spectrogram_processed
+
+def save_as_wav(output_path, spectrogram, sample_rate, pitch):
     """
     Saves spectrogram data as a .wav file by converting it back to time-domain audio.
 
@@ -105,13 +111,15 @@ def save_as_wav(output_path, spectrogram, sample_rate):
     :param spectrogram: The magnitude spectrogram (time-frequency representation).
     :param sample_rate: The sample rate of the audio in Hz.
     """
-    # Reconstruct time-domain signal from spectrogram using inverse STFT
-    from scipy.signal import istft
 
-    _, waveform = istft(spectrogram, fs=sample_rate, nperseg=1024, noverlap=512)
+    spectrogram = clean_spectrogram(spectrogram, 90)
+
+    _, waveform = istft(spectrogram, fs=sample_rate, nperseg=2048, noverlap=1792)
 
     # Normalize the signal to the range [-1, 1] to prevent clipping
     waveform /= np.max(np.abs(waveform))
+
+    waveform = change_pitch(waveform, sample_rate, pitch)
 
     # Convert to 16-bit PCM format
     pcm_signal = np.int16(waveform * 32767)
@@ -120,7 +128,27 @@ def save_as_wav(output_path, spectrogram, sample_rate):
     write(output_path, sample_rate, pcm_signal)
     print(f"Saved .wav file to {output_path}")
 
-def fit_and_predict(learning_rate=0.2, d1=128, epochs=5000):
+def make_features(features):
+    # Round the frequencies to the nearest 1 Hz
+    rounded_frequencies = np.unique(np.round(features[:, 0]))
+    
+    # Extract peak amplitudes
+    peak_amplitudes = features[:, 1]
+    
+    # Calculate the 10th and 90th percentiles
+    amplitude_percentiles = [
+        np.percentile(peak_amplitudes, 10),
+        np.percentile(peak_amplitudes, 90),
+    ]
+
+    new_features = []
+    for amp in amplitude_percentiles:
+        for pitch in rounded_frequencies:
+            new_features.append([pitch,amp])
+    return np.array(new_features)
+
+
+def fit_and_predict(learning_rate=0.2, d1=128, epochs=2000):
     """
     Fits the model to the spectrogram data and predicts a new spectrogram using input features.
     :param learning_rate: Learning rate for the optimizer.
@@ -168,8 +196,8 @@ def fit_and_predict(learning_rate=0.2, d1=128, epochs=5000):
         normalized_spectrograms,
         epochs=epochs,
         batch_size=8,
-        verbose=1,
-        callbacks=[checkpoint_callback]  # Include the callback
+        verbose=1#,
+        #callbacks=[checkpoint_callback]  # Include the callback
     )
 
     # Plot the loss over epochs
@@ -184,24 +212,47 @@ def fit_and_predict(learning_rate=0.2, d1=128, epochs=5000):
     plt.legend()
     plt.savefig(F"loss_{learning_rate}_{d1}_{epochs}.png")
 
-    # Optionally, after training, load the best model if needed
-    best_model = tf.keras.models.load_model('best_model.keras')
+    # # Optionally, after training, load the best model if needed
+    # model = tf.keras.models.load_model('best_model.keras')
 
     # Interpolate a new spectrogram (real and imaginary parts)
-    new_features = np.array([[329.63034, 0.5]])  # Example: frequency and normalized peak value
+    new_features = make_features(features)
+
+    # Interpolate a new spectrogram for each feature
     normalized_new_features = (new_features - feature_mean) / feature_std
-    normalized_interpolated_flat = best_model.predict(normalized_new_features)
+    normalized_interpolated_flat = model.predict(normalized_new_features)
 
-    # Reverse normalization on prediction
-    interpolated_flat = (normalized_interpolated_flat * spectrogram_std) + spectrogram_mean
-    interpolated_spectrogram = interpolated_flat.reshape(spectrograms.shape[1:])
+    # Reshape predictions to a 3D array: (num_features, spectrogram_rows, spectrogram_cols)
+    num_features = new_features.shape[0]
+    spectrogram_shape = spectrograms.shape[1:]  # Shape of one spectrogram (e.g., rows, cols)
+    interpolated_spectrograms = normalized_interpolated_flat.reshape((num_features, *spectrogram_shape))
 
-    # Save interpolated spectrogram as a .wav file
-    save_as_wav(F"output_{learning_rate}_{d1}_{epochs}.wav", interpolated_spectrogram, sample_rate)
+    # Create "interpolated" folder if it doesn't exist
+    output_folder = "interpolated"
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Reverse normalization and save as wav files
+    for i, feature in enumerate(new_features):
+        interpolated_spectrogram = (interpolated_spectrograms[i] * spectrogram_std) + spectrogram_mean
+        pitch = feature[0]  # Frequency in Hz
+        file_name = os.path.join(output_folder, f"output_{learning_rate}_{d1}_{epochs}_peak_{int(feature[1])}_freq_{int(pitch)}.wav")
+        spect = clean_spectrogram(interpolated_spectrogram)
+        save_as_wav(file_name, spect, sample_rate, pitch)
+
+    # #new_features = np.array([[523.25085, 6216.0205]])  # Example: frequency and normalized peak value
+    # normalized_new_features = (new_features - feature_mean) / feature_std
+    # normalized_interpolated_flat = model.predict(normalized_new_features)
+
+    # # Reverse normalization on prediction
+    # interpolated_flat = (normalized_interpolated_flat * spectrogram_std) + spectrogram_mean
+    # interpolated_spectrogram = interpolated_flat.reshape(spectrograms.shape[1:])
+
+    # # Save interpolated spectrogram as a .wav file
+    # pitch = new_features[0,1]
+    # save_as_wav(F"output_{learning_rate}_{d1}_{epochs}.wav", interpolated_spectrogram, sample_rate, pitch)
 
 if __name__ == "__main__":
     fit_and_predict(1.0, 0, 1)
-    fit_and_predict(0.001, 0)
-    # fit_and_predict(0.01, 0)
-    # fit_and_predict(0.1, 0)
-    # fit_and_predict(1.0, 0)
+    fit_and_predict(0.1, 0, 1000)
+    fit_and_predict(0.01, 8, 5000)
+    fit_and_predict(0.1, 8, 1000)
