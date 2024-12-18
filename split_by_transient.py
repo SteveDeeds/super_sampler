@@ -110,7 +110,7 @@ if __name__ == "__main__":
     sample_rate, audio_data = load_wav(input_wav)
 
     # Find split locations with a minimum sample length of 2 seconds
-    split_points = find_split_locations(audio_data, sample_rate, sample_length=2.0, plot=True, frame_size_ms=80)
+    split_points = find_split_locations(audio_data, sample_rate, sample_length=2.0, plot=True, frame_size_ms=20)
 
     # Split and save audio chunks
     process_slices(wave_data=audio_data, sample_rate=sample_rate, slice_ranges=split_points, output_dir=output_dir)
