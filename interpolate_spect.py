@@ -7,10 +7,31 @@ import os
 from scipy.io.wavfile import write, read as wavread
 from scipy.signal import spectrogram, istft
 from scipy.ndimage import zoom
+from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 from wave_slice import analyze_frequency, change_pitch  # Import your function
 
+def apply_low_pass_filter(audio_data, sample_rate, cutoff_freq=10000):
+    """
+    Applies a low-pass filter to the audio data.
 
+    Parameters:
+    - audio_data: np.ndarray, the waveform data as a numpy array.
+    - sample_rate: int, the sample rate of the audio.
+    - cutoff_freq: float, the cutoff frequency for the low-pass filter in Hz (default: 10 kHz).
+
+    Returns:
+    - np.ndarray: The filtered audio data.
+    """
+    # Design a low-pass Butterworth filter
+    nyquist = 0.5 * sample_rate  # Nyquist frequency
+    normalized_cutoff = cutoff_freq / nyquist
+    b, a = butter(N=4, Wn=normalized_cutoff, btype='low', analog=False)  # 4th-order filter
+
+    # Apply the filter to the audio data
+    filtered_audio = filtfilt(b, a, audio_data)
+    
+    return filtered_audio.astype(np.float32)
 
 def load_wav_files(directory, target_length_s=1.0):
     """
@@ -48,7 +69,9 @@ def load_wav_files(directory, target_length_s=1.0):
 
         # store the actual frequency
         frequencies.append(analyze_frequency(waveform, sample_rate))
+        print(F"{filepath} freq={frequencies[-1]}")
         # convert to a common frequency for analysis
+        waveform = apply_low_pass_filter(waveform, sample_rate)
         waveform = change_pitch(waveform, sample_rate, normallized_pitch)
 
         # Zero-pad the waveform if it is shorter than max_length
@@ -60,9 +83,38 @@ def load_wav_files(directory, target_length_s=1.0):
         # Compute the spectrogram
         f, t, Sxx = spectrogram(waveform, fs=sample_rate, nperseg=2048, noverlap=1792)
 
-        # Store spectrogram and associated frequencies/times
+        # Store spectrogram and associated peak values
+        Sxx = clean_spectrogram(Sxx)
         spectrograms.append(Sxx)
         peak_values.append(np.max(waveform))
+
+
+        # Save spectrogram as a .png image
+        no_zeros_Sxx = Sxx
+        no_zeros_Sxx[no_zeros_Sxx <= 0] = 1E-6
+
+        plt.figure(figsize=(10, 10))
+        plt.pcolormesh(t, f, 10 * np.log10(no_zeros_Sxx), shading='gouraud', cmap='viridis', vmin=-60, vmax=60)
+
+        # Set Y-axis to logarithmic scale and limit to 20 Hz - 20 kHz
+        plt.yscale('log')
+        plt.ylim(20, 20000)  # Set frequency range from 20 Hz to 20,000 Hz
+        plt.title(f"Spectrogram of {filepath}")
+        plt.ylabel('Frequency [Hz]')
+        plt.xlabel('Time [s]')
+        plt.colorbar(label='Intensity [dB]')
+
+        # Add gridlines and properly spaced ticks for readability
+        plt.gca().yaxis.set_major_locator(plt.LogLocator(base=10.0, subs=None, numticks=10))
+        plt.gca().yaxis.set_minor_locator(plt.LogLocator(base=10.0, subs='auto', numticks=10))
+        plt.gca().yaxis.set_minor_formatter(plt.NullFormatter())  # Hide minor tick labels
+
+        plt.tight_layout()
+
+        # Save the image
+        image_path = f"{os.path.splitext(filepath)[0]}.png"
+        plt.savefig(image_path)
+        plt.close()
 
     # Convert to numpy arrays
     spectrograms = np.array(spectrograms, dtype=np.float32)
@@ -80,7 +132,7 @@ def create_model(spectrogram_shape, learning_rate=0.2, d1=128):
     """
     output_size = np.prod(spectrogram_shape)
 
-    input_layer = layers.Input(shape=(2,))  # Input: frequency and amplitude (customize as needed)
+    input_layer = layers.Input(shape=(8,))  # Input: frequency and amplitude (customize as needed)
     if d1 > 0:
         x = layers.Dense(d1, activation='relu')(input_layer)
     else:
@@ -93,15 +145,15 @@ def create_model(spectrogram_shape, learning_rate=0.2, d1=128):
     model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
     return model
 
-def clean_spectrogram(spectrogram, p=10):
+def clean_spectrogram(spectrogram, p=99):
     # Calculate the 10th percentile of the spectrogram
     percentile = np.percentile(spectrogram, p)
     
     # Subtract the percentile from the spectrogram
     spectrogram_processed = spectrogram - percentile
     
-    # Set all negative values to zero
-    spectrogram_processed[spectrogram_processed < 0] = 0
+    # Set all negative values to ~zero
+    spectrogram_processed[spectrogram_processed < 0] = 1E-6
     
     return spectrogram_processed
 
@@ -114,10 +166,10 @@ def save_as_wav(output_path, spectrogram, sample_rate, pitch, normalized_pitch):
     :param sample_rate: The sample rate of the audio in Hz.
     """
 
-    stretch_ratio = pitch / normalized_pitch
-    zoom_factors = [1, stretch_ratio]
-    spectrogram = zoom(spectrogram, zoom_factors, order=1)
-    spectrogram = clean_spectrogram(spectrogram, 90)
+    #stretch_ratio = pitch / normalized_pitch
+    #zoom_factors = [1, stretch_ratio]
+    # spectrogram = zoom(spectrogram, zoom_factors, order=1)
+    spectrogram = clean_spectrogram(spectrogram)
     _, waveform = istft(spectrogram, fs=sample_rate, nperseg=2048, noverlap=1792)
 
     # Normalize the signal to the range [-1, 1] to prevent clipping
@@ -150,8 +202,20 @@ def make_features(features):
     for amp in amplitude_percentiles:
         for pitch in rounded_frequencies:
             new_features.append([pitch,amp])
-    return np.array(new_features)
+    return expand_features(np.array(new_features))
 
+
+def expand_features(features):
+    expanded_features = []
+    for i in range(len(features)):
+        feature0 = features[i][0]
+        feature1 = features[i][1]
+        expanded_features.append([
+            feature0, feature1, 
+            1/feature0, 1/feature1, 
+            np.log(feature0), np.log(feature1),
+            feature0**2, feature1**2])
+    return np.array(expanded_features)
 
 def fit_and_predict(learning_rate=0.2, d1=128, epochs=2000):
     """
@@ -176,7 +240,8 @@ def fit_and_predict(learning_rate=0.2, d1=128, epochs=2000):
     normalized_spectrograms = (flattened_spectrograms - spectrogram_mean) / spectrogram_std
 
     # Combine features (frequencies and peak_values) into a single feature set
-    features = np.stack([frequencies, peak_values], axis=1)
+    features = np.stack((frequencies, peak_values), axis=1)
+    features = expand_features(features)
 
     # Normalize the features
     feature_mean = features.mean(axis=0, keepdims=True)
@@ -285,8 +350,7 @@ def fit_and_predict(learning_rate=0.2, d1=128, epochs=2000):
         interpolated_spectrogram = (interpolated_spectrograms[i] * spectrogram_std) + spectrogram_mean
         pitch = feature[0]  # Frequency in Hz
         file_name = os.path.join(output_folder, f"output_{learning_rate}_{d1}_{epochs}_peak_{int(feature[1])}_freq_{int(pitch)}.wav")
-        spect = clean_spectrogram(interpolated_spectrogram)
-        save_as_wav(file_name, spect, sample_rate, pitch, normalized_pitch)
+        save_as_wav(file_name, interpolated_spectrogram, sample_rate, pitch, normalized_pitch)
 
     # #new_features = np.array([[523.25085, 6216.0205]])  # Example: frequency and normalized peak value
     # normalized_new_features = (new_features - feature_mean) / feature_std
@@ -302,4 +366,4 @@ def fit_and_predict(learning_rate=0.2, d1=128, epochs=2000):
 
 if __name__ == "__main__":
     fit_and_predict(1.0, 0, 1)
-    fit_and_predict(0.001, 64, 50000)
+    fit_and_predict(0.1, 0, 5000)
