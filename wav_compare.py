@@ -60,7 +60,7 @@ def plot_spectrograms(data1, data2, rate, nfft=4096, noverlap=2048, file1="", fi
 def main():
     # File paths for the WAV files
     file1 = "CP33-EPiano1.wav"
-    file2 = "CP33-EPiano1-comp.wav"
+    file2 = "CP33-Grand.wav"
 
     # Load WAV files
     rate1, data1 = load_wav_file(file1)
