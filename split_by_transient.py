@@ -71,7 +71,6 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
         plt.legend()
         plt.grid()
         plt.show()
-        plt.waitforbuttonpress()
 
         slice_ranges = [(valid_splits[i], valid_splits[i + 1]) for i in range(len(valid_splits) - 1)]
 
@@ -105,7 +104,7 @@ def find_split_locations(audio, sr, sensitivity=0.5, frame_size_ms=10, sample_le
 # Example usage
 if __name__ == "__main__":
     input_wav = "CP33-EPiano1.wav"  # Path to your WAV file
-    output_dir = "output_samples"  # Directory to save the samples
+    output_dir = "output"  # Directory to save the samples
 
     # Load the WAV file
     sample_rate, audio_data = load_wav(input_wav)
