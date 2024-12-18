@@ -167,7 +167,7 @@ def process_slices(
         # Save the slice in the "samples" directory
         upper_velocity = min(127, velocity + 10)
         lower_velocity = max(0, velocity - 10)
-        slice_filename = os.path.join(output_dir, "samples", f"slice_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
+        slice_filename = os.path.join(output_dir, "samples", f"slice_{i+1:03d}_{note}_{upper_velocity}_{lower_velocity}.wav")
         # slice_data = slice_data / np.max(np.abs(slice_data))
         prepare_directories(output_dir=output_dir)
         write(slice_filename, sample_rate, (slice_data * 32767).astype(np.int16))
@@ -175,7 +175,7 @@ def process_slices(
         # Generate and save the wavetable in the "wavetables" directory
         slice_data = change_pitch(slice_data, sample_rate, (sample_rate / 2048) * 8)
         wavetable = generate_wavetable(slice_data, sample_rate=sample_rate)
-        wavetable_filename = os.path.join(output_dir, "wavetables", f"wavetable_{i+1}_{note}_{upper_velocity}_{lower_velocity}.wav")
+        wavetable_filename = os.path.join(output_dir, "wavetables", f"wavetable_{i+1:03d}_{note}_{upper_velocity}_{lower_velocity}.wav")
         write(wavetable_filename, sample_rate, (wavetable * 32767).astype(np.int16))
 
         # Store slice information
