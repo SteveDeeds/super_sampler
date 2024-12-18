@@ -3,6 +3,7 @@ import numpy as np
 from scipy.io.wavfile import read
 from scipy.fft import fftfreq, fft
 from scipy.signal import resample
+from scipy.signal import stft, istft
 
 class SliceInfo:
     """
@@ -95,9 +96,36 @@ def calculate_velocity(peak_amplitude, max_amplitude):
         return 0
     return int((peak_amplitude / max_amplitude) * 127)
 
+# def change_pitch(audio_data, sample_rate, target_frequency):
+#     """
+#     Changes the pitch of the audio data by adjusting the sample rate.
+
+#     Parameters:
+#     - audio_data: np.ndarray, the waveform data as a numpy array.
+#     - sample_rate: int, the sample rate of the audio.
+#     - target_frequency: float, the desired frequency in Hz.
+
+#     Returns:
+#     - np.ndarray: The pitch-adjusted audio data.
+#     """
+#     # Analyze the current dominant frequency
+#     current_frequency = analyze_frequency(audio_data, sample_rate)
+
+#     if current_frequency <= 0:
+#         raise ValueError("The audio signal contains no detectable frequency.")
+
+#     # Calculate the pitch adjustment factor
+#     pitch_factor = current_frequency / target_frequency
+
+#     # Change the pitch by adjusting the sample rate
+#     resampled_audio = resample(audio_data, int(len(audio_data) * pitch_factor))
+
+#     # Return the pitch-adjusted audio
+#     return resampled_audio.astype(np.float32)
+
 def change_pitch(audio_data, sample_rate, target_frequency):
     """
-    Changes the pitch of the audio data by adjusting the sample rate.
+    Changes the pitch of the audio data without altering the playback duration.
 
     Parameters:
     - audio_data: np.ndarray, the waveform data as a numpy array.
@@ -113,14 +141,26 @@ def change_pitch(audio_data, sample_rate, target_frequency):
     if current_frequency <= 0:
         raise ValueError("The audio signal contains no detectable frequency.")
 
-    # Calculate the pitch adjustment factor
-    pitch_factor = current_frequency / target_frequency
+    # Calculate the pitch shift ratio
+    pitch_shift_ratio = target_frequency / current_frequency
 
-    # Change the pitch by adjusting the sample rate
-    resampled_audio = resample(audio_data, int(len(audio_data) * pitch_factor))
+    # Perform Short-Time Fourier Transform (STFT)
+    n_fft = 4096
+    hop_length = n_fft // 8
+    f, t, Zxx = stft(audio_data, fs=sample_rate, nperseg=n_fft, noverlap=n_fft-hop_length)
 
-    # Return the pitch-adjusted audio
-    return resampled_audio.astype(np.float32)
+    # Modify the frequencies by the pitch shift ratio
+    num_bins = Zxx.shape[0]
+    stretched_Zxx = np.zeros_like(Zxx, dtype=np.complex64)
+    for i in range(num_bins):
+        target_bin = int(i / pitch_shift_ratio)
+        if 0 <= target_bin < num_bins:
+            stretched_Zxx[i] = Zxx[target_bin]
+
+    # Reconstruct the time-domain signal using ISTFT
+    _, pitch_shifted_audio = istft(stretched_Zxx, fs=sample_rate, nperseg=n_fft, noverlap=n_fft-hop_length)
+
+    return pitch_shifted_audio.astype(np.float32)
 
 def tune_to_nearest_note(audio_data, sample_rate):
     """
