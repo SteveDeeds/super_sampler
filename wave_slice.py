@@ -91,60 +91,6 @@ def generate_wavetable(audio_data, wavelet_length=2048, number_of_waves=256, sam
 
     return full_wavetable
 
-# def generate_wavetable(audio_data, sample_rate, wavelet_length=2048, number_of_waves=256):
-#     """
-#     Generate a wavetable from the input audio data.
-
-#     Parameters:
-#         audio_data (numpy array): The input audio signal.
-#         sample_rate (int): The sample rate of the audio signal.
-#         wavelet_length (int): The length of each wavelet in the wavetable.
-#         number_of_waves (int): The number of waveforms in the wavetable.
-
-#     Returns:
-#         numpy array: The generated wavetable of shape (number_of_waves, wavelet_length).
-#     """
-#     # Step 1: Determine the pitch using the analyze_frequency function
-#     fundamental_freq = analyze_frequency(audio_data, sample_rate)
-#     if fundamental_freq <= 0:
-#         raise ValueError("Could not determine a valid fundamental frequency.")
-
-#     # Step 2: Calculate the period of the fundamental frequency
-#     period_samples = int(sample_rate / fundamental_freq)
-#     slice_spacing =  int((len(audio_data)-wavelet_length)/number_of_waves)
-
-#     wavetable = []
-
-#     for i in range(number_of_waves):
-#         start = i*slice_spacing
-#         # find the closest positive zero crossing
-#         while (not audio_data[start]>0 and audio_data[start-1]<0):
-#             if audio_data[start] > 0:
-#                 start = start -1
-#             else:
-#                 start = start +1
-#             if start == 0:
-#                 break
-#         end = start + 1 * period_samples
-#         # find the closest positive zero crossing
-#         while (not audio_data[end]>0 and audio_data[end-1]<0):
-#             if audio_data[end] > 0:
-#                 end = end -1
-#             else:
-#                 end = end +1
-#             if end == 0:
-#                 break        
-#         # print(F"start={start}, end={end}")
-
-#         # Step 5: Resample the extracted grain to the desired wavelet length
-#         resampled_grain = resample(audio_data[start:end], wavelet_length)
-
-#         wavetable.append(resampled_grain)
-#     # Concatenate all the wavelets into a single 1D array
-#     full_wavetable = np.concatenate(wavetable)        
-
-#     return full_wavetable
-
 def process_slices(
     wave_data, sample_rate, slice_ranges, output_dir):
     print(slice_ranges)
@@ -204,17 +150,6 @@ def split_wav(wave_data, sample_rate, num_slices, output_dir="output"):
 
     return process_slices(wave_data, sample_rate, slice_ranges, output_dir)
 
-def split_wav_by_trans(
-    wave_data, sample_rate, output_dir="output", samples_dir="samples", wavetables_dir="wavetables",
-    threshold=0.05, frame_size_ms=10, sample_length=2.0
-):
-    prepare_directories(output_dir, samples_dir, wavetables_dir)
-
-    split_locations = find_split_locations(wave_data, sample_rate, threshold, frame_size_ms, sample_length)
-    slice_ranges = [(split_locations[i], split_locations[i + 1]) for i in range(len(split_locations) - 1)]
-
-    return process_slices(wave_data, sample_rate, slice_ranges, output_dir, samples_dir, wavetables_dir)
-
 # Main Function
 def main():
     file_path = "CP33-EPiano1.wav"
@@ -225,16 +160,6 @@ def main():
 
     # Split the wave data into slices
     slices = split_wav(wave_data, sample_rate, num_slices)
-    # slices = split_wav_by_trans(
-    # wave_data,
-    # sample_rate,
-    # output_dir="output",
-    # samples_dir="samples",
-    # wavetables_dir="wavetables",
-    # sensitivity=0.5,
-    # frame_size_ms=10,
-    # sample_length=1.5
-    # )
 
     return slices
 
