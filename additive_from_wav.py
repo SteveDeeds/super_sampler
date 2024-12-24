@@ -34,10 +34,6 @@ def envelope_generator(attack_time, decay_time, sr=44100, plot=False):
     # Combine the phases
     envelope = np.concatenate((attack_phase, decay_phase))
     
-    # Pad the envelope to the total duration with zeros if necessary
-    if len(envelope) < total_samples:
-        envelope = np.pad(envelope, (0, total_samples - len(envelope)), 'constant')
-    
     # Plot the envelope if requested
     if plot:
         plt.plot(envelope)
@@ -156,11 +152,42 @@ def compute_envelope(signal, sr, window_size=100, plot=False):
     
     return envelope[:len(signal)]
 
-def find_attack_time(envelope, sr):
-    # Find the peak of the envelope
-    peak_index = np.argmax(envelope)
-    peak_time_ms = (peak_index / sr) * 1000  # Convert to milliseconds
-    return peak_time_ms
+def calculate_attack_and_decay_times(envelope, sr, decay_duration=5):
+    """
+    Calculate both the attack and decay times of an envelope.
+    
+    Parameters:
+    - envelope (numpy array): The amplitude envelope of the signal
+    - sr (int): Sample rate (in Hz)
+    - threshold (float): The amplitude level to define the end of the decay (default is 1% of the maximum amplitude)
+    - decay_duration (float): The total duration of the decay phase in seconds (default is 5 seconds)
+    
+    Returns:
+    - attack_time (float): The attack time in milliseconds
+    - decay_time (float): The decay time as a fraction of the decay duration (in seconds)
+    """
+    
+    # 1. Calculate attack time: Find the point where the envelope reaches the maximum value
+    max_value = np.max(envelope)
+    attack_end_index = np.argmax(envelope >= max_value)  # Find where it reaches the peak
+    attack_time_samples = attack_end_index
+    attack_time_ms = (attack_time_samples / sr) * 1000  # Convert to milliseconds
+    
+    # 2. Calculate decay time:
+    # Find the portion of the envelope after the attack phase
+    decay_start_index = attack_end_index
+    decay_envelope = envelope[decay_start_index:]  # Get the decay portion of the envelope
+    
+    # Normalize the decay portion to 1
+    decay_envelope_normalized = decay_envelope / np.max(decay_envelope)
+    
+    # Integrate the area under the normalized decay envelope using the trapezoidal rule
+    area_under_curve = np.trapz(decay_envelope_normalized, dx=1 / sr)  # Area under the decay curve
+    
+    # Calculate decay time: the fraction of the total decay duration (5 seconds) based on the integrated area
+    decay_time_ms = area_under_curve / decay_duration *1000  # Fraction of the 5-second decay
+    
+    return attack_time_ms, decay_time_ms
 
 # Load the WAV file
 filename = 'CP33-EP_C4.wav'
@@ -181,5 +208,5 @@ for freq in harmonic_frequencies:
     envelope = compute_envelope(filtered_signal, sr, plot=True)
     
     # Find the attack time
-    attack_time = find_attack_time(envelope, sr)
-    print(f"Attack time for {freq} Hz: {attack_time:.2f} ms")
+    attack_time_ms, decay_time_ms = calculate_attack_and_decay_times(envelope, sr)
+    print(f"For {freq}Hz, Attack time = {attack_time_ms:.2f} ms Decay time = {decay_time_ms:.2f} ms")
