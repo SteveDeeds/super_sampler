@@ -152,15 +152,15 @@ def compute_envelope(signal, sr, window_size=100, plot=False):
     
     return envelope[:len(signal)]
 
-def calculate_attack_and_decay_times(envelope, sr, decay_duration=5):
+def calculate_attack_and_decay_times(envelope, sr, decay_duration=5, plot=False):
     """
-    Calculate both the attack and decay times of an envelope.
+    Calculate both the attack and decay times of an envelope, and optionally plot the envelope and synthetic attack-decay envelope.
     
     Parameters:
     - envelope (numpy array): The amplitude envelope of the signal
     - sr (int): Sample rate (in Hz)
-    - threshold (float): The amplitude level to define the end of the decay (default is 1% of the maximum amplitude)
     - decay_duration (float): The total duration of the decay phase in seconds (default is 5 seconds)
+    - plot (bool): Whether to plot the input and generated envelopes (default is False)
     
     Returns:
     - attack_time (float): The attack time in milliseconds
@@ -185,9 +185,31 @@ def calculate_attack_and_decay_times(envelope, sr, decay_duration=5):
     area_under_curve = np.trapz(decay_envelope_normalized, dx=1 / sr)  # Area under the decay curve
     
     # Calculate decay time: the fraction of the total decay duration (5 seconds) based on the integrated area
-    decay_time_ms = area_under_curve / decay_duration *1000  # Fraction of the 5-second decay
+    decay_time = area_under_curve * decay_duration  # Fraction of the 5-second decay
     
-    return attack_time_ms, decay_time_ms
+    # Use envelope_generator to create a synthetic envelope based on attack and decay times
+    synthetic_envelope = envelope_generator(attack_time_ms, decay_time * 1000, sr, plot=False)  # decay_time in ms
+    
+    # Plot the input envelope and the synthetic envelope if requested
+    if plot:
+        normalized_envelope = envelope/np.max(envelope)
+
+        plt.figure(figsize=(12, 6))
+        
+        # Plot the input envelope
+        plt.plot(np.linspace(0, len(normalized_envelope) / sr, len(normalized_envelope)), normalized_envelope, label='Input Envelope', color='blue')
+        
+        # Plot the synthetic envelope
+        plt.plot(np.linspace(0, len(synthetic_envelope) / sr, len(synthetic_envelope)), synthetic_envelope, label='Synthetic Envelope', color='orange', linestyle='--')
+        
+        plt.title('Input Envelope vs Synthetic Envelope')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Amplitude')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+    
+    return attack_time_ms, decay_time
 
 # Load the WAV file
 filename = 'CP33-EP_C4.wav'
@@ -205,8 +227,8 @@ for freq in harmonic_frequencies:
     filtered_signal = narrowband_filter(y, sr, freq)
     
     # Compute the envelope
-    envelope = compute_envelope(filtered_signal, sr, plot=True)
+    envelope = compute_envelope(filtered_signal, sr, plot=False)
     
     # Find the attack time
-    attack_time_ms, decay_time_ms = calculate_attack_and_decay_times(envelope, sr)
+    attack_time_ms, decay_time_ms = calculate_attack_and_decay_times(envelope, sr, plot=True)
     print(f"For {freq}Hz, Attack time = {attack_time_ms:.2f} ms Decay time = {decay_time_ms:.2f} ms")
